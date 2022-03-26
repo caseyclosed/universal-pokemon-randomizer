@@ -1,6 +1,15 @@
 package com.dabomstew.pkrandom.hackhandlers;
 
 import java.io.File;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.stream.Stream;
+import com.dabomstew.pkrandom.RomFunctions;
 
 public class EmeraldHack {
     public static int[][] getTutorIds() {
@@ -57,10 +66,10 @@ public class EmeraldHack {
         for (int i = 0; i < splitBytes.length; i++) {
             byteArray[i] = (byte) Integer.parseInt(splitBytes[i], 16);
         }
-        int firstOccurence = Utilities.findFirstOccurence(romData, byteArray) + 20;
-        byte[] newByteArray =
-                Utilities.getBytes(firstOccurence, (int) (Math.pow(2, 25) - 50), romData);
-        int secondOcurrence = Utilities.findFirstOccurence(newByteArray, byteArray);
+        int firstOccurence = RomFunctions.search(romData, byteArray).get(0) + 20;
+        byte[] newByteArray = new byte[(int) (Math.pow(2, 25) - 50)];
+        System.arraycopy(romData, firstOccurence, newByteArray, 0, (int) (Math.pow(2, 25) - 50));
+        int secondOcurrence = RomFunctions.search(newByteArray, byteArray).get(0);
         return secondOcurrence + firstOccurence;
     }
 
@@ -79,7 +88,7 @@ public class EmeraldHack {
         for (int i = 0; i < splitBytes.length; i++) {
             byteArray[i] = (byte) Integer.parseInt(splitBytes[i], 16);
         }
-        return Utilities.findFirstOccurence(romData, byteArray);
+        return RomFunctions.search(romData, byteArray).get(0);
     }
 
 
@@ -94,30 +103,28 @@ public class EmeraldHack {
         for (int i = 0; i < splitBytes.length; i++) {
             byteArray[i] = (byte) Integer.parseInt(splitBytes[i], 16);
         }
-        return Utilities.findFirstOccurence(romData, byteArray);
+        return RomFunctions.search(romData, byteArray).get(0);
 
     }
 
     public static void main(String... args) {
-        File mapFile = new File(testMapFilePath);
-        File romFile = new File(testRomFilePath);
+        File mapFile = new File("/home/bspector/java/universal-pokemon-randomizer/pokeemerald.map");
+        File romFile = new File("/home/bspector/java/games/Pokemon Inclement Emerald.gba");
         generateConfig(mapFile, romFile);
     }
 
     public static void generateConfig(File mapFile, File romFile) {
         if (!mapFile.exists()) {
-            UserInterface.displayErrorMessage(null, mapFile.getName() + " was not found",
-                    "Error generating the custom config file");
-            return;
+            throw new RuntimeException(mapFile.getName() + " was not found: "
+                    + "Error generating the custom config file");
         }
         if (!romFile.exists()) {
-            UserInterface.displayErrorMessage(null, romFile.getName() + " was not found",
-                    "Error generating the custom config file");
-            return;
+            throw new RuntimeException(romFile.getName() + " was not found: "
+                    + "Error generating the custom config file");
         }
         byte[] romData = initRomData(romFile);
-        String mapFileAsString = Utilities.readLineByLineJava8(mapFile.getAbsolutePath());
-        MemoryExplorer.initMemoryAdressMapping(mapFile.getPath());
+        String mapFileAsString = readLineByLineJava8(mapFile.getAbsolutePath());
+        // MemoryExplorer.initMemoryAdressMapping(mapFile.getPath());
         String[] splitByLine = mapFileAsString.split("\n");
         HashMap<String, String> map = new HashMap<>();
         HashMap<String, String> map2 = new HashMap<>();
@@ -137,7 +144,7 @@ public class EmeraldHack {
         map.put("Wild Headers", " gWildMonHeaders");
         map.put("Trainers", " gTrainers");
         map.put("Ability Names", " gAbilityNames");
-        map.put("Item Names", "  gItems");
+        map.put("Item Names", " gItems");
         String tutorAdress = null;
         String moveNamesAdress = null;
         ArrayList<String> toPrint = new ArrayList<>();
@@ -166,18 +173,19 @@ public class EmeraldHack {
 
         byte[][] tutorBytes = getTutorBytes();
         for (int i = 0; i < tutorBytes.length; i++) {
-            int location = Utilities.findFirstOccurence(romData, tutorBytes[i]);
+            int location = RomFunctions.search(romData, tutorBytes[i]).get(0);
             toPrint.add("Tutor Gym" + (i + 1) + " = 0x0000000008" + Integer.toHexString(location));
         }
 
-        int fromAdressT = Utilities.convertFromHex(tutorAdress);
-        int fromAdressM = Utilities.convertFromHex(moveNamesAdress);
+        int fromAdressT = Integer.parseInt(tutorAdress, 16);
+        int fromAdressM = Integer.parseInt(moveNamesAdress, 16);
         int toAdress = (int) Math.pow(2, 25) - 50;// utils.convertFromHex(adressesSeperated[1]);
-        byte[] tutorData = Utilities.getBytes(fromAdressT, toAdress, romData);
+        byte[] tutorData = new byte[toAdress];
+        System.arraycopy(romData, fromAdressT, tutorData, 0, toAdress);
 
         int tableUnitSize = 2;
         ArrayList<Integer> tutorMoveIndexList = new ArrayList<>();
-        for (int i = Constants.tutor_move_offset; i < Constants.all_tutor_moves; i++) {
+        for (int i = 2; i < 18; i++) {
             int start = tableUnitSize * i;
             byte[] unitArray = new byte[tableUnitSize];
             System.arraycopy(tutorData, start, unitArray, 0, tableUnitSize);
@@ -185,18 +193,19 @@ public class EmeraldHack {
             tutorMoveIndexList.add(moveId);
         }
 
-        byte[] moveNameData = Utilities.getBytes(fromAdressM, toAdress, romData);
+        byte[] moveNameData = Arrays.copyOfRange(romData, fromAdressM, toAdress);
         tableUnitSize = 13;
         ArrayList<String> moveNameList = new ArrayList<>();
-        for (int i = 0; i < Constants.all_moves; i++) {
+        for (int i = 0; i < 914; i++) {
             int start = tableUnitSize * i;
             byte[] unitArray = new byte[tableUnitSize];
             System.arraycopy(moveNameData, start, unitArray, 0, tableUnitSize);
             StringBuilder stringBuilder = new StringBuilder();
             for (byte B : unitArray) {
                 int ii = B & 0xff;
-                String hex = Integer.toHexString(ii);
-                stringBuilder.append(PokemonNameUtils.getLetter(hex));
+                stringBuilder.append((char) ii);
+                // String hex = Integer.toHexString(ii);
+                // stringBuilder.append(PokemonNameUtils.getLetter(hex));
             }
             String moveName = stringBuilder.toString().replace("^", " ").trim();
             moveNameList.add(moveName);
@@ -221,7 +230,7 @@ public class EmeraldHack {
          * was not found! //Move Tutor Not In Menu gText_DracoMeteor was not found! //Move Tutor Not
          * In Menu
          */
-        for (int i = 0; i < all_valid_Tutor_moves; i++) {
+        for (int i = 0; i < 600; i++) {
             String programText = "gText_"
                     + moveNameList.get(tutorMoveIndexList.get(i)).replace("-", "").replace(" ", "");
             if (shortTextToTrueText.containsKey(programText)) {
@@ -229,8 +238,8 @@ public class EmeraldHack {
             }
             programText = programText.trim();
             map2.put(moveNameList.get(tutorMoveIndexList.get(i)) + "["
-                    + MemoryExplorer.memoryAdressNameToSize.get(programText) + "] {" + i + "}",
-                    "  " + programText);
+            // + MemoryExplorer.memoryAdressNameToSize.get(programText) + "] {" + i + "}",
+                    + "X] {" + i + "}", " " + programText);
         }
 
         ArrayList<String> forbidden = new ArrayList<>();
@@ -282,7 +291,30 @@ public class EmeraldHack {
             System.out.println(s);
         }
     }
+
+    public static String readLineByLineJava8(String filePath) {
+        StringBuilder contentBuilder = new StringBuilder();
+        try (Stream<String> stream = Files.lines(Paths.get(filePath), StandardCharsets.UTF_8)) {
+            stream.forEach(s -> contentBuilder.append(s).append("\n"));
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return contentBuilder.toString();
+    }
+
+    public static byte[] initRomData(File file) {
+        System.out.println("[INFO] Init Rom Data");
+        byte[] romData;
+        try {
+            romData = Files.readAllBytes(Paths.get(file.getPath()));
+        } catch (Throwable t) {
+            t.printStackTrace();
+            return null;
+        }
+        return romData;
+    }
 }
+
 
 
 // Pokemon Shiny Palette = 0x0000000008367344
